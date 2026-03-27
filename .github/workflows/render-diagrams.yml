@@ -1,4 +1,4 @@
-# Regenerate README diagram PNGs from Mermaid sources when diagram inputs change on main.
+# Regenerate README diagram PNG + SVG assets from Mermaid sources when diagram inputs change on main.
 name: Render Mermaid diagrams
 
 on:
@@ -61,18 +61,18 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Render PNGs
+      - name: Render diagrams (PNG + SVG)
         run: bash scripts/render_diagrams.sh
 
-      - name: Commit and push if PNGs changed
+      - name: Commit and push if diagram assets changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/diagrams/png/
+          git add docs/diagrams/png/ docs/diagrams/svg/
           if git diff --staged --quiet; then
-            echo "Diagram PNGs unchanged."
+            echo "Diagram assets unchanged."
           else
-            git commit -m "chore(docs): regenerate Mermaid diagram PNGs"
+            git commit -m "chore(docs): regenerate Mermaid diagram PNGs and SVGs"
             git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${GITHUB_REF_NAME}"
           fi
         env:

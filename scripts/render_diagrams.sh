@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Render docs/diagrams/sources/*.mmd → docs/diagrams/png/*.png
-# Defaults tuned for sharp README images (high scale + large viewport).
+# Render docs/diagrams/sources/*.mmd → docs/diagrams/png/*.png and svg/*.svg
+# PNG: high scale + viewport for slides / raster fallbacks.
+# SVG: vector output — README uses SVG so GitHub renders crisp at any zoom (PNG alone still ≠ Figma).
 # Requires Node.js + npx (downloads @mermaid-js/mermaid-cli and Chromium on first run).
 #
 # Override for one-off experiments:
-#   MERMAID_SCALE=4 MERMAID_WIDTH=3000 MERMAID_HEIGHT=2000 bash scripts/render_diagrams.sh
+#   MERMAID_SCALE=4.5 MERMAID_WIDTH=3000 MERMAID_HEIGHT=2000 bash scripts/render_diagrams.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIAG="$ROOT/docs/diagrams"
 cd "$DIAG"
-mkdir -p png
+mkdir -p png svg
 
 : "${MERMAID_CLI_PKG:=@mermaid-js/mermaid-cli}"
-: "${MERMAID_SCALE:=3.5}"
-: "${MERMAID_WIDTH:=2600}"
-: "${MERMAID_HEIGHT:=1700}"
+: "${MERMAID_SCALE:=4}"
+: "${MERMAID_WIDTH:=2800}"
+: "${MERMAID_HEIGHT:=1800}"
 : "${MERMAID_BG:=#ffffff}"
 
 # GitHub Actions / many Linux CI images block Chromium’s sandbox (zygote/AppArmor).
@@ -38,5 +39,14 @@ for f in sources/*.mmd; do
     -s "${MERMAID_SCALE}" \
     -w "${MERMAID_WIDTH}" \
     -H "${MERMAID_HEIGHT}"
+  echo "Rendering $f -> svg/${outname}.svg"
+  npx --yes -p "${MERMAID_CLI_PKG}" mmdc \
+    ${puppeteer_cfg[@]+"${puppeteer_cfg[@]}"} \
+    -i "$f" \
+    -o "svg/${outname}.svg" \
+    -c mermaid-config.json \
+    -b "${MERMAID_BG}" \
+    -w "${MERMAID_WIDTH}" \
+    -H "${MERMAID_HEIGHT}"
 done
-echo "Done. PNGs are in docs/diagrams/png/"
+echo "Done. Outputs: docs/diagrams/png/ and docs/diagrams/svg/"

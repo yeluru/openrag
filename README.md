@@ -44,7 +44,7 @@ Think of it as: **librarian first, writer second**. The librarian pulls books of
 
 ### RAG in two phases
 
-![RAG: index phase and query phase sharing Postgres + pgvector](docs/diagrams/png/rag-two-phases.png)
+![RAG: index phase and query phase sharing Postgres + pgvector](docs/diagrams/svg/rag-two-phases.svg)
 
 *Same **vector store** serves both phases: you write embeddings during ingestion, then read the nearest neighbors at query time. The LLM only sees what retrieval returned—plus your question—not your whole file dump.*
 
@@ -110,13 +110,13 @@ This section follows the same README pattern as projects like [talentmatch-ai](h
 
 ### System architecture
 
-![OpenRAG system architecture: client tier, FastAPI, domain services, Postgres, external APIs](docs/diagrams/png/system-architecture.png)
+![OpenRAG system architecture: client tier, FastAPI, domain services, Postgres, external APIs](docs/diagrams/svg/system-architecture.svg)
 
 *Three-tier shape: **browsers and integrators** talk to **FastAPI**; **domain services** own parsing, vectors, and LLM calls; **Postgres + files** persist everything. Embeddings and chat completions go out to **HTTP APIs** you configure (`EMBEDDING_*`, `LLM_*`) or **mock** providers for local dev.*
 
 ### API and route surface
 
-![API route groups under /api/v1 and separate /healthz liveness](docs/diagrams/png/api-routes.png)
+![API route groups under /api/v1 and separate /healthz liveness](docs/diagrams/svg/api-routes.svg)
 
 *`/healthz` is separate for load balancers; everything else lives under the versioned prefix. OpenAPI lives at `/docs`.*
 
@@ -132,13 +132,13 @@ When you upload a file:
 6. Each chunk is **embedded** and stored with a **vector** on the `chunks` table (pgvector).  
 7. The job moves to **ready** (or records an error you can read from the API).
 
-![Ingestion pipeline from POST /documents to job ready](docs/diagrams/png/ingestion-pipeline.png)
+![Ingestion pipeline from POST /documents to job ready](docs/diagrams/svg/ingestion-pipeline.svg)
 
 *Linear pipeline you can trace in code; swapping **BackgroundTasks** for a queue worker would keep the same steps.*
 
 ### Ingestion sequence (who calls whom)
 
-![Sequence: upload, background ingestion, poll status](docs/diagrams/png/ingestion-sequence.png)
+![Sequence: upload, background ingestion, poll status](docs/diagrams/svg/ingestion-sequence.svg)
 
 *The client gets IDs immediately; heavy work finishes **asynchronously** in the API process.*
 
@@ -150,19 +150,19 @@ When you upload a file:
 4. The **LLM** receives a prompt with those passages and is asked to answer **from that context**.  
 5. The response includes **citations** (chunk references) so clients can show “where this came from.”
 
-![RAG query path from /chat/ask to answer with citations](docs/diagrams/png/rag-query-path.png)
+![RAG query path from /chat/ask to answer with citations](docs/diagrams/svg/rag-query-path.svg)
 
 *Retrieval is explicit: if scores are weak, the product can say so instead of inventing text.*
 
 ### Core data model (simplified ERD)
 
-![Simplified ERD: users, documents, sections, chunks, jobs, chat sessions](docs/diagrams/png/core-erd.png)
+![Simplified ERD: users, documents, sections, chunks, jobs, chat sessions](docs/diagrams/svg/core-erd.svg)
 
 *Real schema adds `chat_messages`, quizzes, flashcards, notes, highlights, and more; this is the **RAG spine**—users, documents, structure, vectors, and jobs.*
 
 ### Developer journey (first successful ask)
 
-![Developer journey from clone to first grounded chat ask](docs/diagrams/png/developer-journey.png)
+![Developer journey from clone to first grounded chat ask](docs/diagrams/svg/developer-journey.svg)
 
 *Same path you can script with **curl** or any HTTP client; see [Using the API](#using-the-api-step-by-step-with-curl) below.*
 
