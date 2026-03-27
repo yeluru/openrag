@@ -1,0 +1,9 @@
+flowchart TB
+  classDef step fill:#E3F2FD,stroke:#1565C0
+
+  ASK["POST /chat/ask + scope"]:::step --> QEMB["Embed question"]:::step
+  QEMB --> VEC["pgvector cosine top-K"]:::step
+  VEC --> POST["Dedupe + min score"]:::step
+  POST --> PROMPT["Build grounded prompt"]:::step
+  PROMPT --> LLM["Chat completion API"]:::step
+  LLM --> RESP["Answer + citations"]:::step

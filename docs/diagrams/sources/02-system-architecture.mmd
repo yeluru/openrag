@@ -1,0 +1,46 @@
+flowchart TB
+  classDef client fill:#E3F2FD,stroke:#1565C0,stroke-width:2px
+  classDef app fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
+  classDef domain fill:#FFF3E0,stroke:#EF6C00,stroke-width:2px
+  classDef data fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
+  classDef ext fill:#ECEFF1,stroke:#546E7A,stroke-dasharray: 5 5
+
+  subgraph T1["Client tier"]
+    WEB[React UI optional]:::client
+    API_CLIENT[Your app curl SDK n8n]:::client
+  end
+
+  subgraph T2["Application tier — FastAPI"]
+    ROUTES["HTTP /api/v1 routes"]:::app
+    BG["BackgroundTasks → ingestion worker"]:::app
+  end
+
+  subgraph T3["Domain layer"]
+    ING["Ingestion pipeline"]:::domain
+    PR["Parsers PDF DOCX XLSX"]:::domain
+    RET["pgvector retrieval"]:::domain
+    GEN["Grounded generation + prompts"]:::domain
+  end
+
+  subgraph T4["Data tier"]
+    PG[("PostgreSQL + pgvector")]:::data
+    FS["Upload dir on disk"]:::data
+  end
+
+  subgraph T5["External services"]
+    OAI["OpenAI-compatible embedding + chat APIs"]:::ext
+  end
+
+  WEB --> ROUTES
+  API_CLIENT --> ROUTES
+  ROUTES --> ING
+  ROUTES --> RET
+  ROUTES --> GEN
+  BG --> ING
+  ING --> PR
+  PR --> FS
+  ING --> PG
+  ING --> OAI
+  RET --> PG
+  GEN --> PG
+  GEN --> OAI

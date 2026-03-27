@@ -1,0 +1,10 @@
+flowchart LR
+  classDef step fill:#FFF8E1,stroke:#F9A825
+
+  POST["POST /documents"]:::step --> SAVE["Save file + DB rows"]:::step
+  SAVE --> WK["process_ingestion_job"]:::step
+  WK --> REG["Parser registry"]:::step
+  REG --> STR["Structure + chunk"]:::step
+  STR --> EMB["Embed batches"]:::step
+  EMB --> WVEC["Write chunk vectors"]:::step
+  WVEC --> RDY["Job: ready"]:::step

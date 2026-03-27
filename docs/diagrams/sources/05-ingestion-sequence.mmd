@@ -1,0 +1,17 @@
+sequenceDiagram
+  autonumber
+  participant Client
+  participant API as FastAPI
+  participant BG as Background task
+  participant Pipe as Ingestion pipeline
+  participant DB as PostgreSQL
+
+  Client->>API: POST /documents multipart
+  API->>DB: INSERT document + ingestion_job
+  API-->>Client: document_id job_id
+  API->>BG: schedule process_ingestion_job
+  BG->>Pipe: run_ingestion
+  Pipe->>DB: parse chunk embed UPDATE chunks
+  Pipe->>DB: job status ready or error
+  Client->>API: GET /documents/id/ingestion
+  API-->>Client: status progress

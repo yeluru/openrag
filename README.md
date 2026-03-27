@@ -42,22 +42,11 @@ A **large language model (LLM)** is good at language, but it does **not** automa
 
 Think of it as: **librarian first, writer second**. The librarian pulls books off the shelf; the writer summarizes what those pages actually say.
 
-```mermaid
-flowchart LR
-  subgraph ingest["Offline: index your documents"]
-    D[Documents] --> P[Parse and chunk]
-    P --> E[Embed chunks]
-    E --> V[(Vector DB)]
-  end
-  subgraph online["Online: answer a question"]
-    Q[User question] --> EQ[Embed question]
-    EQ --> R[Retrieve top chunks]
-    R --> V
-    V --> C[Context + question]
-    C --> L[LLM]
-    L --> A[Answer + citations]
-  end
-```
+### RAG in two phases
+
+![RAG: index phase and query phase sharing Postgres + pgvector](docs/diagrams/png/rag-two-phases.png)
+
+*Same **vector store** serves both phases: you write embeddings during ingestion, then read the nearest neighbors at query time. The LLM only sees what retrieval returned—plus your question—not your whole file dump.*
 
 ---
 
@@ -117,44 +106,21 @@ Integrate from Python, n8n, or another backend: bootstrap a user, upload, poll i
 
 ## How OpenRAG works (architecture)
 
-### Big picture
+This section follows the same README pattern as projects like [talentmatch-ai](https://github.com/yeluru/talentmatch-ai): **one diagram per idea**, **PNG for pixel-stable rendering on GitHub**, plus a **short caption**. Sources live in [`docs/diagrams/sources/`](docs/diagrams/sources/); regenerate PNGs with [`scripts/render_diagrams.sh`](scripts/render_diagrams.sh) (see [`docs/diagrams/README.md`](docs/diagrams/README.md)).
 
-```mermaid
-flowchart TB
-  subgraph client["Clients"]
-    WEB[React UI]
-    CURL[curl / your app]
-  end
-  subgraph api["FastAPI — app/main.py"]
-    R[Routes: users, documents, chat, search, quizzes, ...]
-    BT[BackgroundTasks: ingestion worker]
-  end
-  subgraph services["Services"]
-    ING[Ingestion pipeline]
-    PARSE[Parsers: PDF / Office]
-    EMB[Embeddings]
-    RET[pgvector retrieval]
-    GEN[Generation + prompts]
-  end
-  subgraph data["Data"]
-    PG[(PostgreSQL + pgvector)]
-    FS[Upload files on disk]
-  end
-  WEB --> R
-  CURL --> R
-  R --> ING
-  R --> RET
-  R --> GEN
-  BT --> ING
-  ING --> PARSE
-  ING --> EMB
-  PARSE --> FS
-  EMB --> PG
-  RET --> PG
-  GEN --> PG
-```
+### System architecture
 
-### Ingestion path (indexing)
+![OpenRAG system architecture: client tier, FastAPI, domain services, Postgres, external APIs](docs/diagrams/png/system-architecture.png)
+
+*Three-tier shape: **browsers and integrators** talk to **FastAPI**; **domain services** own parsing, vectors, and LLM calls; **Postgres + files** persist everything. Embeddings and chat completions go out to **HTTP APIs** you configure (`EMBEDDING_*`, `LLM_*`) or **mock** providers for local dev.*
+
+### API and route surface
+
+![API route groups under /api/v1 and separate /healthz liveness](docs/diagrams/png/api-routes.png)
+
+*`/healthz` is separate for load balancers; everything else lives under the versioned prefix. OpenAPI lives at `/docs`.*
+
+### Ingestion pipeline (internal flow)
 
 When you upload a file:
 
@@ -166,34 +132,39 @@ When you upload a file:
 6. Each chunk is **embedded** and stored with a **vector** on the `chunks` table (pgvector).  
 7. The job moves to **ready** (or records an error you can read from the API).
 
-```mermaid
-sequenceDiagram
-  participant U as User / client
-  participant API as FastAPI
-  participant W as Background worker
-  participant P as Parser
-  participant E as Embedder
-  participant DB as Postgres
+![Ingestion pipeline from POST /documents to job ready](docs/diagrams/png/ingestion-pipeline.png)
 
-  U->>API: POST /documents (multipart file)
-  API->>DB: Insert document + job
-  API-->>U: document_id, job_id
-  API->>W: schedule process_ingestion_job
-  W->>P: parse + structure + chunk
-  W->>E: embed batches
-  E->>DB: store vectors + chunk text
-  W->>DB: mark job ready
-  U->>API: GET /documents/{id}/ingestion
-  API-->>U: status: ready
-```
+*Linear pipeline you can trace in code; swapping **BackgroundTasks** for a queue worker would keep the same steps.*
 
-### Query path (question answering)
+### Ingestion sequence (who calls whom)
+
+![Sequence: upload, background ingestion, poll status](docs/diagrams/png/ingestion-sequence.png)
+
+*The client gets IDs immediately; heavy work finishes **asynchronously** in the API process.*
+
+### RAG query path (grounded answer)
 
 1. The API **embeds the question** (same embedding model as chunks).  
 2. **pgvector** similarity search pulls the top‑K chunks, with **filters** (e.g. one document).  
 3. **Deduping** and **score thresholds** reduce noise (`RETRIEVAL_*` settings).  
 4. The **LLM** receives a prompt with those passages and is asked to answer **from that context**.  
 5. The response includes **citations** (chunk references) so clients can show “where this came from.”
+
+![RAG query path from /chat/ask to answer with citations](docs/diagrams/png/rag-query-path.png)
+
+*Retrieval is explicit: if scores are weak, the product can say so instead of inventing text.*
+
+### Core data model (simplified ERD)
+
+![Simplified ERD: users, documents, sections, chunks, jobs, chat sessions](docs/diagrams/png/core-erd.png)
+
+*Real schema adds `chat_messages`, quizzes, flashcards, notes, highlights, and more; this is the **RAG spine**—users, documents, structure, vectors, and jobs.*
+
+### Developer journey (first successful ask)
+
+![Developer journey from clone to first grounded chat ask](docs/diagrams/png/developer-journey.png)
+
+*Same path you can script with **curl** or any HTTP client; see [Using the API](#using-the-api-step-by-step-with-curl) below.*
 
 ---
 

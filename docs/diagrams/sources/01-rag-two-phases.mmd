@@ -1,0 +1,23 @@
+flowchart TB
+  classDef phase fill:#E8EAF6,stroke:#3949AB,stroke-width:2px
+  classDef store fill:#E3F2FD,stroke:#1565C0,stroke-width:2px
+  classDef action fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
+
+  subgraph P1["Phase 1 — Build the index (upload & background jobs)"]
+    direction LR
+    U[Your documents]:::action --> CH[Chunk + structure]:::action
+    CH --> EM[Embedding model]:::action
+    EM --> VS[(Postgres + pgvector)]:::store
+  end
+
+  subgraph P2["Phase 2 — Answer online (per question)"]
+    direction LR
+    Q[User question]:::action --> QE[Embed question]:::action
+    QE --> SR[Similarity search]:::action
+    SR --> VS
+    VS --> CTX[Top passages + prompt]:::action
+    CTX --> LLM[LLM]:::action
+    LLM --> OUT[Answer + citations]:::action
+  end
+
+  class P1,P2 phase

@@ -1,0 +1,11 @@
+flowchart LR
+  classDef n fill:#F1F8E9,stroke:#558B2F
+
+  A[Clone + venv]:::n --> B[docker compose db]:::n
+  B --> C[cp .env.example]:::n
+  C --> D[alembic upgrade]:::n
+  D --> E[uvicorn]:::n
+  E --> F[bootstrap X-User-Id]:::n
+  F --> G[POST documents]:::n
+  G --> H[Poll ingestion ready]:::n
+  H --> I[POST chat ask]:::n

@@ -1,0 +1,7 @@
+erDiagram
+  users ||--o{ documents : owns
+  users ||--o{ chat_sessions : has
+  documents ||--o{ document_sections : structure
+  documents ||--o{ chunks : splits_into
+  documents ||--o{ ingestion_jobs : tracks
+  documents ||--o{ chat_sessions : optional_scope

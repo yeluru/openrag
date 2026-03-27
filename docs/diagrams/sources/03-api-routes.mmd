@@ -1,0 +1,15 @@
+flowchart LR
+  classDef r fill:#E8F5E9,stroke:#2E7D32
+
+  subgraph HTTP["Mounted under API_PREFIX e.g. /api/v1"]
+    direction TB
+    U[users bootstrap]:::r
+    D[documents upload status PDF]:::r
+    C[chat ask]:::r
+    S[search]:::r
+    Q[quizzes flashcards]:::r
+    N[notes highlights activity]:::r
+    H[health DB check]:::r
+  end
+
+  LB["/healthz liveness no DB"]:::r
