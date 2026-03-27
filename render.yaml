@@ -1,0 +1,48 @@
+# Render Blueprint — deploy OpenRAG API + Postgres in one click (optional).
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After first deploy: open your Postgres in Render Dashboard and ensure pgvector is available
+# (Alembic runs CREATE EXTENSION IF NOT EXISTS vector). Use PostgreSQL 13+.
+
+databases:
+  - name: openrag-db
+    databaseName: openrag
+    user: openrag
+    plan: free # upgrade for production
+
+services:
+  - type: web
+    name: openrag-api
+    runtime: python
+    plan: free # upgrade for production; free tier sleeps
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: bash scripts/render_start.sh
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: openrag-db
+          property: connectionString
+      - key: DEBUG
+        value: "false"
+      - key: LOG_JSON
+        value: "true"
+      - key: CORS_ORIGINS
+        sync: false # set to your frontend origin(s), comma-separated
+      # Ephemeral: cleared on redeploy. For durable uploads, add a Render Disk (paid) and set UPLOAD_DIR under mountPath.
+      - key: UPLOAD_DIR
+        value: ./data/uploads
+      - key: EMBEDDING_PROVIDER
+        value: openai
+      - key: EMBEDDING_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: openai
+      - key: LLM_API_KEY
+        sync: false
+      - key: PDF_OCR_ENABLED
+        value: "false"
+      - key: SERVICE_API_KEY
+        generateValue: true

@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme aligned with VibeKnowing v2–style tokens (indigo primary, slate neutrals, Inter) */
+:root {
+  --or-bg: #f4f5fb;
+  --or-cream: #ffffff;
+  --or-ink: #0f172a;
+  --or-ink-muted: #64748b;
+  --or-amber: #4f46e5;
+  --or-accent-end: #7c3aed;
+  --or-accent-wash: #eef2ff;
+  --or-sage: #10b981;
+  --or-border: #e2e8f0;
+  --or-surface-muted: #f1f5f9;
+  --or-surface-inset: #e2e8f0;
+  --or-ring-track: rgb(226 232 240 / 0.65);
+  --or-font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --or-font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --or-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  --or-shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 4px 12px rgb(79 70 229 / 0.06);
+  --or-shadow-lift: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 8px 24px rgb(79 70 229 / 0.08);
+  --or-radius: 0.75rem;
+}
+
+html.dark {
+  --or-bg: #0f1117;
+  --or-cream: #161b27;
+  --or-ink: #e8ecf4;
+  --or-ink-muted: #8b95a9;
+  --or-amber: #818cf8;
+  --or-accent-end: #a78bfa;
+  --or-accent-wash: #1e1b4b;
+  --or-sage: #34d399;
+  --or-border: #252e42;
+  --or-surface-muted: #1e2535;
+  --or-surface-inset: #161b27;
+  --or-ring-track: rgb(37 46 66 / 0.8);
+  --or-shadow-card: 0 2px 8px rgb(0 0 0 / 0.35), 0 8px 24px rgb(129 140 248 / 0.06);
+  --or-shadow-lift: 0 12px 28px rgb(0 0 0 / 0.45), 0 16px 40px rgb(129 140 248 / 0.08);
+}
+
+@layer base {
+  html {
+    @apply antialiased;
+    background-color: var(--or-bg);
+    color: var(--or-ink);
+    font-family: var(--or-font-sans);
+    scroll-behavior: smooth;
+  }
+
+  .font-display {
+    font-family: var(--or-font-display);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+
+  kbd {
+    font-family: var(--or-font-mono);
+  }
+}
+
+.or-grain {
+  position: relative;
+  isolation: isolate;
+}
+
+.or-grain::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+.or-grain > * {
+  position: relative;
+  z-index: 1;
+}
+
+.or-card {
+  border-radius: var(--or-radius);
+  transition:
+    box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.or-paper {
+  background: linear-gradient(180deg, #fafbfc 0%, #f1f5f9 100%);
+}
+
+html.dark .or-paper {
+  background: linear-gradient(180deg, #161b27 0%, #0f1117 100%);
+}
+
+.or-input {
+  border: 1px solid var(--or-border);
+  background: var(--or-cream);
+  color: var(--or-ink);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.or-input:focus {
+  outline: none;
+  border-color: rgb(79 70 229 / 0.45);
+  box-shadow: 0 0 0 3px rgb(79 70 229 / 0.15);
+}
+
+html.dark .or-input:focus {
+  border-color: rgb(129 140 248 / 0.5);
+  box-shadow: 0 0 0 3px rgb(129 140 248 / 0.12);
+}
+
+.or-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--or-amber) transparent;
+}
+
+.or-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.or-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.or-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--or-amber), var(--or-accent-end));
+  border-radius: 999px;
+}
+
+@layer utilities {
+  .focus-ring {
+    outline: none;
+    box-shadow: 0 0 0 2px rgb(79 70 229 / 0.35);
+  }
+
+  .shadow-or-card {
+    box-shadow: var(--or-shadow-card);
+  }
+
+  .shadow-or-lift {
+    box-shadow: var(--or-shadow-lift);
+  }
+
+  .or-inset-well {
+    box-shadow: inset 0 1px 2px rgb(15 23 42 / 0.06);
+    background: linear-gradient(180deg, var(--or-surface-inset) 0%, transparent 100%);
+  }
+
+  html.dark .or-inset-well {
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.35);
+  }
+
+  .or-gradient-accent {
+    background: linear-gradient(135deg, var(--or-amber) 0%, var(--or-accent-end) 100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
