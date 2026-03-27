@@ -1,0 +1,47 @@
+# Regenerate README diagram PNGs from Mermaid sources when diagram inputs change on main.
+name: Render Mermaid diagrams
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/diagrams/sources/**"
+      - "docs/diagrams/mermaid-config.json"
+      - "scripts/render_diagrams.sh"
+      - ".github/workflows/render-diagrams.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: render-diagrams-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Render PNGs
+        run: bash scripts/render_diagrams.sh
+
+      - name: Commit and push if PNGs changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/diagrams/png/
+          if git diff --staged --quiet; then
+            echo "Diagram PNGs unchanged."
+          else
+            git commit -m "chore(docs): regenerate Mermaid diagram PNGs"
+            git push
+          fi

@@ -12,6 +12,26 @@ bash scripts/render_diagrams.sh
 
 Requirements: **Node.js 18+** and **network** on first run (npx fetches `@mermaid-js/mermaid-cli` and a headless Chromium).
 
+### Sharper PNGs (optional)
+
+Defaults are **scale 3.5**, **2600×1700** viewport. Override for one run:
+
+```bash
+MERMAID_SCALE=4 MERMAID_WIDTH=3200 MERMAID_HEIGHT=2000 bash scripts/render_diagrams.sh
+```
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `MERMAID_SCALE` | `3.5` | Puppeteer device scale (higher = sharper, larger files) |
+| `MERMAID_WIDTH` | `2600` | Viewport width (px) |
+| `MERMAID_HEIGHT` | `1700` | Viewport height (px) |
+| `MERMAID_BG` | `#ffffff` | PNG background |
+| `MERMAID_CLI_PKG` | `@mermaid-js/mermaid-cli` | Pin e.g. `@mermaid-js/mermaid-cli@11.4.0` for reproducible builds |
+
+### CI on GitHub
+
+When you push to **`main`** and change anything under `docs/diagrams/sources/`, `docs/diagrams/mermaid-config.json`, or `scripts/render_diagrams.sh`, [`.github/workflows/render-diagrams.yml`](../../.github/workflows/render-diagrams.yml) re-runs the script and **commits updated `png/`** if bytes differ. Use **Actions → Render Mermaid diagrams → Run workflow** to regenerate manually.
+
 ## Files
 
 | Source | Output PNG | Used in README |
@@ -25,4 +45,4 @@ Requirements: **Node.js 18+** and **network** on first run (npx fetches `@mermai
 | `sources/07-core-erd.mmd` | `png/core-erd.png` | Core data model |
 | `sources/08-developer-journey.mmd` | `png/developer-journey.png` | Developer journey |
 
-Styling is controlled by `mermaid-config.json`. Bump `-s` in `scripts/render_diagrams.sh` if you need higher resolution for print or Retina hero images.
+Styling is controlled by `mermaid-config.json`. Resolution is controlled by the script defaults or `MERMAID_*` env vars above.
