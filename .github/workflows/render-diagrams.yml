@@ -7,6 +7,7 @@ on:
     paths:
       - "docs/diagrams/sources/**"
       - "docs/diagrams/mermaid-config.json"
+      - "docs/diagrams/puppeteer-ci.json"
       - "scripts/render_diagrams.sh"
       - ".github/workflows/render-diagrams.yml"
   workflow_dispatch: {}

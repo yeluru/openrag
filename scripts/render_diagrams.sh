@@ -17,12 +17,20 @@ mkdir -p png
 : "${MERMAID_HEIGHT:=1700}"
 : "${MERMAID_BG:=#ffffff}"
 
+# GitHub Actions / many Linux CI images block Chromium’s sandbox (zygote/AppArmor).
+puppeteer_cfg=()
+if [[ "${CI:-}" == "true" ]] || [[ -n "${MERMAID_PUPPETEER_CI:-}" ]]; then
+  puppeteer_cfg=(--puppeteerConfigFile puppeteer-ci.json)
+fi
+
 for f in sources/*.mmd; do
   [[ -f "$f" ]] || continue
   base=$(basename "$f" .mmd)
   outname="${base#??-}"
   echo "Rendering $f -> png/${outname}.png (scale=${MERMAID_SCALE}, ${MERMAID_WIDTH}x${MERMAID_HEIGHT})"
+  # Bash 3.2 + set -u: empty "${arr[@]}" is an error; use + guard.
   npx --yes -p "${MERMAID_CLI_PKG}" mmdc \
+    ${puppeteer_cfg[@]+"${puppeteer_cfg[@]}"} \
     -i "$f" \
     -o "png/${outname}.png" \
     -c mermaid-config.json \
