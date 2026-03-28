@@ -36,6 +36,17 @@ def create_app() -> FastAPI:
         debug=settings.debug,
     )
 
+    # CORS first (before routes) so preflight OPTIONS always gets headers when origin matches.
+    origins = cors_origins_list()
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
     @app.get("/healthz", tags=["health"])
     async def healthz() -> dict[str, str]:
         """Liveness probe for platforms (e.g. Render). No DB, no API key — use as Health Check Path."""
@@ -52,15 +63,6 @@ def create_app() -> FastAPI:
     app.include_router(notes.router, prefix=p)
     app.include_router(highlights.router, prefix=p)
     app.include_router(activity.router, prefix=p)
-    origins = cors_origins_list()
-    if origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
     return app
 
 

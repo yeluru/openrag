@@ -178,25 +178,21 @@ export function OpenRAGProvider({
     });
   }, []);
 
+  /** Server does all indexing; we only peek once—Library has “Refresh indexing status” for updates. */
   const pollIngestion = useCallback(
     async (docId: string) => {
       setPendingIngestDocIds((s) => new Set(s).add(docId));
-      const deadline = Date.now() + 10 * 60_000;
-      while (Date.now() < deadline) {
-        try {
-          const ing = await getIngestion(userId, docId);
-          if (ing.status === "ready") {
-            pushToast("Document ready to read.");
-            break;
-          }
-          if (ing.status === "failed") {
-            pushToast(ing.error_message || "Ingestion failed.", "error");
-            break;
-          }
-        } catch {
-          /* 404 early */
-        }
-        await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 1200));
+      try {
+        const ing = await getIngestion(userId, docId);
+        if (ing.status === "ready") pushToast("Document ready to read.");
+        else if (ing.status === "failed") pushToast(ing.error_message || "Ingestion failed.", "error");
+        else
+          pushToast(
+            "Indexing runs on the server. Open Library and click Refresh indexing status to see progress.",
+          );
+      } catch {
+        /* job row may lag briefly after upload */
       }
       setPendingIngestDocIds((s) => {
         const n = new Set(s);

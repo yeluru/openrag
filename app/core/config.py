@@ -120,8 +120,11 @@ class Settings(BaseSettings):
     log_json: bool = False
     include_retrieval_debug: bool = Field(default=False, description="Extra retrieval fields when debug=true")
 
-    # CORS (comma-separated origins; empty disables middleware)
-    cors_origins: str = ""
+    # CORS (comma-separated origins; empty disables middleware). Render: CORS_ORIGINS.
+    cors_origins: str = Field(
+        default="",
+        validation_alias=AliasChoices("CORS_ORIGINS", "cors_origins"),
+    )
 
 
 @lru_cache
@@ -134,6 +137,18 @@ def project_root() -> Path:
     return _PROJECT_ROOT
 
 
+def _normalize_cors_origin(o: str) -> str:
+    s = o.strip().strip('"').strip("'")
+    if len(s) > 1 and s.endswith("/"):
+        s = s.rstrip("/")
+    return s
+
+
 def cors_origins_list() -> list[str]:
     raw = get_settings().cors_origins
-    return [o.strip() for o in raw.split(",") if o.strip()]
+    out: list[str] = []
+    for part in raw.split(","):
+        n = _normalize_cors_origin(part)
+        if n:
+            out.append(n)
+    return out

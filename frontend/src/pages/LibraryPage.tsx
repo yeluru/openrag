@@ -15,6 +15,7 @@ export function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusByDoc, setStatusByDoc] = useState<Record<string, string | null | undefined>>({});
+  const [ingestionRefreshing, setIngestionRefreshing] = useState(false);
   const [supportedFormats, setSupportedFormats] = useState<SupportedFormatsResponse | null>(null);
 
   useEffect(() => {
@@ -47,11 +48,12 @@ export function LibraryPage() {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
+  /** One-shot fetch of server-side ingestion status (indexing/chunking runs only on the API). */
+  const refreshIngestionStatuses = useCallback(async () => {
     if (docs.length === 0) return;
-    let cancelled = false;
-    async function poll() {
-      const next: Record<string, string | null> = {};
+    setIngestionRefreshing(true);
+    const next: Record<string, string | null> = {};
+    try {
       await Promise.all(
         docs.map(async (d) => {
           try {
@@ -62,13 +64,31 @@ export function LibraryPage() {
           }
         }),
       );
-      if (!cancelled) setStatusByDoc((prev) => ({ ...prev, ...next }));
+      setStatusByDoc((prev) => ({ ...prev, ...next }));
+    } finally {
+      setIngestionRefreshing(false);
     }
-    void poll();
-    const t = setInterval(() => void poll(), 2500);
+  }, [docs, userId]);
+
+  useEffect(() => {
+    if (docs.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const next: Record<string, string | null> = {};
+      await Promise.all(
+        docs.map(async (d) => {
+          try {
+            const ing = await getIngestion(userId, d.id);
+            if (!cancelled) next[d.id] = ing.status;
+          } catch {
+            if (!cancelled) next[d.id] = null;
+          }
+        }),
+      );
+      if (!cancelled) setStatusByDoc((prev) => ({ ...prev, ...next }));
+    })();
     return () => {
       cancelled = true;
-      clearInterval(t);
     };
   }, [docs, userId]);
 
@@ -111,7 +131,23 @@ export function LibraryPage() {
       <UploadZone onFile={onUpload} supportedFormats={supportedFormats} />
 
       <div className="mt-12">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Your documents</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Your documents</h2>
+          {!loading && docs.length > 0 ? (
+            <button
+              type="button"
+              disabled={ingestionRefreshing}
+              onClick={() => void refreshIngestionStatuses()}
+              className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {ingestionRefreshing ? "Checking…" : "Refresh indexing status"}
+            </button>
+          ) : null}
+        </div>
+        <p className="mt-1 text-xs text-zinc-500">
+          Parsing, chunking, and embeddings run on the server. Click the button above to fetch the latest job
+          status from the API.
+        </p>
         {loading ? (
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Skeleton className="h-36" />
