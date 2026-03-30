@@ -8,6 +8,7 @@ import { DocumentCard } from "@/components/library/DocumentCard";
 import { UploadZone } from "@/components/library/UploadZone";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useUserId } from "@/hooks/useUserId";
+import { isNonTerminalIngestionStatus } from "@/lib/ingestion";
 
 export function LibraryPage() {
   const [userId] = useUserId();
@@ -48,49 +49,45 @@ export function LibraryPage() {
     void refresh();
   }, [refresh]);
 
-  /** One-shot fetch of server-side ingestion status (indexing/chunking runs only on the API). */
-  const refreshIngestionStatuses = useCallback(async () => {
+  /** Merge latest ingestion status from API (server runs chunking/embeddings). */
+  const mergeIngestionStatuses = useCallback(async () => {
     if (docs.length === 0) return;
-    setIngestionRefreshing(true);
     const next: Record<string, string | null> = {};
+    await Promise.all(
+      docs.map(async (d) => {
+        try {
+          const ing = await getIngestion(userId, d.id);
+          next[d.id] = ing.status;
+        } catch {
+          next[d.id] = null;
+        }
+      }),
+    );
+    setStatusByDoc((prev) => ({ ...prev, ...next }));
+  }, [docs, userId]);
+
+  const refreshIngestionStatuses = useCallback(async () => {
+    setIngestionRefreshing(true);
     try {
-      await Promise.all(
-        docs.map(async (d) => {
-          try {
-            const ing = await getIngestion(userId, d.id);
-            next[d.id] = ing.status;
-          } catch {
-            next[d.id] = null;
-          }
-        }),
-      );
-      setStatusByDoc((prev) => ({ ...prev, ...next }));
+      await mergeIngestionStatuses();
     } finally {
       setIngestionRefreshing(false);
     }
-  }, [docs, userId]);
+  }, [mergeIngestionStatuses]);
 
   useEffect(() => {
     if (docs.length === 0) return;
-    let cancelled = false;
-    void (async () => {
-      const next: Record<string, string | null> = {};
-      await Promise.all(
-        docs.map(async (d) => {
-          try {
-            const ing = await getIngestion(userId, d.id);
-            if (!cancelled) next[d.id] = ing.status;
-          } catch {
-            if (!cancelled) next[d.id] = null;
-          }
-        }),
-      );
-      if (!cancelled) setStatusByDoc((prev) => ({ ...prev, ...next }));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [docs, userId]);
+    void mergeIngestionStatuses();
+  }, [docs, userId, mergeIngestionStatuses]);
+
+  /** Light auto-poll while any doc is not ready/failed so the Library updates without only manual clicks. */
+  useEffect(() => {
+    if (docs.length === 0) return;
+    const anyActive = docs.some((d) => isNonTerminalIngestionStatus(statusByDoc[d.id]));
+    if (!anyActive) return;
+    const t = setInterval(() => void mergeIngestionStatuses(), 12_000);
+    return () => clearInterval(t);
+  }, [docs, statusByDoc, mergeIngestionStatuses]);
 
   const onUpload = async (file: File) => {
     setError(null);
@@ -145,8 +142,8 @@ export function LibraryPage() {
           ) : null}
         </div>
         <p className="mt-1 text-xs text-zinc-500">
-          Parsing, chunking, and embeddings run on the server. Click the button above to fetch the latest job
-          status from the API.
+          Parsing, chunking, and embeddings run on the server. Status refreshes about every 12s while a document
+          is still indexing; use the button for an immediate check.
         </p>
         {loading ? (
           <div className="mt-4 grid gap-4 sm:grid-cols-2">

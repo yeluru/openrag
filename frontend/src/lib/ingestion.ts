@@ -32,3 +32,9 @@ export function ingestionProgressIndex(status: string): number {
   const i = INGESTION_ORDER.indexOf(status as (typeof INGESTION_ORDER)[number]);
   return i >= 0 ? i : 0;
 }
+
+/** True while we should keep polling the server (unknown, error retry, or in-flight pipeline). */
+export function isNonTerminalIngestionStatus(status: string | null | undefined): boolean {
+  if (status === "ready" || status === "failed") return false;
+  return true;
+}
