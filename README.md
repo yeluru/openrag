@@ -9,7 +9,7 @@ Upload a PDF, Word doc, or spreadsheet. Ask questions. Get grounded answers — 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-Swagger-6ba539?style=flat-square&logo=swagger&logoColor=white)](http://localhost:8000/docs)
 
 </div>
@@ -835,7 +835,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for more detail on code style, commit con
 
 ## 📄 License
 
-[MIT](LICENSE) — free to use, fork, and build on.
+[Apache 2.0](LICENSE) — free to use, fork, modify, and distribute, including in commercial products. Contributions back carry an explicit patent grant, protecting every user of this project.
 
 ---
 
