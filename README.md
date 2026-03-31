@@ -1,495 +1,848 @@
-# OpenRAG
+<div align="center">
 
-**Open, self-hostable retrieval-augmented generation (RAG)** for *your* private documents. Upload **PDF**, **Word (`.docx`)**, or **Excel (`.xlsx`)**, get **structure-aware chunks** and **vector search** (Postgres **pgvector**), then ask questions, search, generate quizzes and flashcards, and take notes—**with citations** back to the source when the system finds relevant text.
+# 🔍 OpenRAG
 
-Run it as a **FastAPI** backend only, or pair it with the included **React + Vite** UI.
+**Self-hostable, batteries-included Retrieval-Augmented Generation for your private documents.**
 
----
+Upload a PDF, Word doc, or spreadsheet. Ask questions. Get grounded answers — with citations pointing back to the exact text the model used.
 
-## Table of contents
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-Swagger-6ba539?style=flat-square&logo=swagger&logoColor=white)](http://localhost:8000/docs)
 
-1. [What is RAG? (start here)](#what-is-rag-start-here)  
-2. [Why use RAG instead of “just asking ChatGPT”?](#why-use-rag-instead-of-just-asking-chatgpt)  
-3. [What OpenRAG gives you](#what-openrag-gives-you)  
-4. [Who this is for](#who-this-is-for)  
-5. [Use cases and examples](#use-cases-and-examples)  
-6. [How OpenRAG works (architecture)](#how-openrag-works-architecture)  
-7. [Key ideas (mini glossary)](#key-ideas-mini-glossary)  
-8. [Tech stack](#tech-stack)  
-9. [Repository layout](#repository-layout)  
-10. [Quick start: clone to running app](#quick-start-clone-to-running-app)  
-11. [Configuration (what each knob does)](#configuration-what-each-knob-does)  
-12. [Using the API (step-by-step with curl)](#using-the-api-step-by-step-with-curl)  
-13. [Frontend (optional UI)](#frontend-optional-ui)  
-14. [Deployment](#deployment)  
-15. [Testing and quality](#testing-and-quality)  
-16. [Design choices and tradeoffs](#design-choices-and-tradeoffs)  
-17. [Troubleshooting](#troubleshooting)  
-18. [Contributing](#contributing)  
-19. [Community guidelines](#community-guidelines)  
-20. [License](#license)
+</div>
 
 ---
 
-## What is RAG? (start here)
+## Table of Contents
 
-A **large language model (LLM)** is good at language, but it does **not** automatically know *your* private PDFs, your team wiki, or yesterday’s policy doc—unless you paste them in every time.
+1. [What is RAG? (start here, freshers welcome)](#-what-is-rag-start-here)
+2. [Why build your own instead of "just using ChatGPT"?](#-why-build-your-own)
+3. [What OpenRAG gives you](#-what-openrag-gives-you)
+4. [How it works — architecture in pictures](#-how-it-works--architecture-in-pictures)
+5. [Key vocabulary](#-key-vocabulary)
+6. [Tech stack](#-tech-stack)
+7. [Repository layout](#-repository-layout)
+8. [Quick start: zero to running in 5 minutes](#-quick-start-zero-to-running-in-5-minutes)
+9. [Verify your setup (smoke test)](#-verify-your-setup)
+10. [API walkthrough with real curl examples](#-api-walkthrough)
+11. [Configuration reference](#%EF%B8%8F-configuration-reference)
+12. [Frontend (optional React UI)](#-frontend-optional-react-ui)
+13. [Deployment on Render](#-deployment-on-render)
+14. [Testing](#-testing)
+15. [Design decisions and trade-offs](#-design-decisions-and-trade-offs)
+16. [Troubleshooting](#-troubleshooting)
+17. [FAQ](#-faq)
+18. [Contributing](#-contributing)
+19. [License](#-license)
 
-**Retrieval-augmented generation (RAG)** is a pattern that does two things before the model answers:
+---
 
-1. **Retrieve** — Find the most relevant passages from *your* indexed documents (usually with **semantic search** over **embeddings**).  
-2. **Generate** — Ask the LLM to answer **using only (or primarily) those passages**, and ideally **point to** where the text came from.
+## 🧠 What is RAG? (start here)
 
-Think of it as: **librarian first, writer second**. The librarian pulls books off the shelf; the writer summarizes what those pages actually say.
+If you are new to RAG — or to AI systems in general — this section is for you. Read it carefully; everything else in this project builds on these ideas.
+
+### The problem with LLMs and private knowledge
+
+A large language model (LLM) like GPT-4 was trained on text from the internet and books. It knows a lot — but it does **not** know about your company's internal policy document, the research paper you downloaded yesterday, or your 200-page product manual. If you ask it a question about those, it will either say "I don't know" or, worse, make something up that sounds plausible.
+
+### The librarian analogy
+
+Imagine you walk into a library and ask a question. A great librarian does two things:
+
+1. **Retrieves** the right books — searches the shelves, pulls the most relevant pages.
+2. **Explains** the answer in their own words — using *those pages* as the source.
+
+RAG does exactly this, but with software:
+
+1. **Retrieve** — Search your indexed documents for the passages most relevant to the question.
+2. **Generate** — Hand those passages to the LLM and ask it to answer *using only what it was given*.
+
+The key insight: the LLM does not need to "remember" your document. It only needs to *read* the relevant excerpt at the moment of answering — just like a librarian reading a paragraph aloud.
 
 ### RAG in two phases
 
-![RAG: index phase and query phase sharing Postgres + pgvector](docs/diagrams/svg/rag-two-phases.svg)
+![RAG in two phases — index once, answer any question](docs/diagrams/svg/rag-two-phases.svg)
 
-*Same **vector store** serves both phases: you write embeddings during ingestion, then read the nearest neighbors at query time. The LLM only sees what retrieval returned—plus your question—not your whole file dump.*
+**Phase 1 — Build the index (done once per document):**
+
+```
+Your PDF → parse into text → split into chunks → embed each chunk → store vectors in Postgres
+```
+
+**Phase 2 — Answer a question (done per query):**
+
+```
+Question → embed question → find most similar chunks → build prompt with those chunks → LLM answers → return answer + citations
+```
+
+The same **PostgreSQL + pgvector** database serves both phases. Ingestion writes vectors in; query time reads the nearest neighbors out.
+
+### Why this approach works
+
+- The LLM only sees what retrieval returned — it cannot hallucinate about content it was never shown.
+- Citations let you verify every claim. If the retriever found nothing relevant, the system can say "not enough evidence" instead of inventing an answer.
+- You never have to paste your whole document into a chat box again.
 
 ---
 
-## Why use RAG instead of “just asking ChatGPT”?
-
-**Building and running your own RAG** is not only about better answers over private documents—it is a foundation you control. You can plug the same retrieval-and-generation pipeline into **your own agents**, **chatbots**, **internal tools**, or **customer-facing applications**, with **your** authentication, data policies, and UX—instead of being limited to a vendor’s chat window.
+## 💡 Why Build Your Own?
 
 | Approach | Strength | Weakness |
-|----------|-----------|----------|
-| **ChatGPT alone** | Fast, general knowledge | No access to your private files; may **guess** when it should say “I don’t know” |
-| **Paste whole doc every time** | Simple | Breaks context limits; doesn’t scale; hard to search many files |
-| **RAG** | Answers grounded in **your** corpus; can cite **snippets** | Needs ingestion pipeline, storage, and tuning |
+|----------|----------|----------|
+| **ChatGPT / Claude directly** | Instant, powerful | Doesn't know your private files; may hallucinate confidently |
+| **Paste the document every time** | Simple | Hits context limits; doesn't scale; no multi-doc search |
+| **Vendor RAG products** | Managed | Black-box; costly at scale; your data leaves your control |
+| **OpenRAG (self-hosted)** | Full control, citable answers, extensible | Needs an embedding API + Postgres to run |
 
-OpenRAG is built around **grounding**: the model is steered toward retrieved text, and the API can surface **low confidence** when retrieval is weak—so you are less likely to get a confident fiction.
-
----
-
-## What OpenRAG gives you
-
-- **Grounded Q&A** — Chat asks the retriever first; answers tie back to **citations** and passages when evidence exists.  
-- **Semantic search** — Query your library by meaning, not only keywords.  
-- **Scoped retrieval** — Limit chat or search to one **document**, section, or page range.  
-- **Learning-style features** — Quizzes, flashcards, notes, highlights, activity—useful for study and review workflows.  
-- **Pluggable file types** — New formats register in one place ([`app/services/parsing/registry.py`](app/services/parsing/registry.py)) without rewriting routes.  
-- **OpenAI-compatible APIs** — Point **embeddings** and **chat** at OpenAI or any compatible HTTP API; use **mock** providers for offline development.  
-- **One database** — Postgres holds metadata, chunks, and **pgvector** embeddings.  
-- **Optional UI** — React app under [`frontend/`](frontend/) with library, reader, chat, and more.
-
-**Supported upload types today:** **PDF** (PyMuPDF, optional Tesseract OCR), **`.docx`** (python-docx), **`.xlsx`** (openpyxl). See `GET /api/v1/documents/supported-formats` after the server starts.
+**When OpenRAG is the right choice:**
+- You have private documents that must not leave your infrastructure.
+- You want citable, grounded answers (not creative summaries).
+- You want to *understand* how RAG works by reading a real, complete codebase.
+- You are building a product that needs a RAG backend you can fork and own.
 
 ---
 
-## Who this is for
+## ✨ What OpenRAG Gives You
 
-- **Students and researchers** who want answers **with sources** from papers and notes.  
-- **Teams** experimenting with **private** document Q&A without sending file contents to a vendor UI.  
-- **Developers** who want a **real codebase** to fork: API-first, clear layers, tests, and extension points.  
-- **Anyone new to RAG** who learns best by **running** a system and reading **one** coherent project end-to-end.
+**Core RAG capabilities:**
+- Upload **PDF**, **Word (.docx)**, or **Excel (.xlsx)** — parsed, chunked, and embedded automatically.
+- **Grounded Q&A** — answers tied to specific passages with citations.
+- **Semantic search** — find content by meaning, not just keywords.
+- **Scoped retrieval** — limit chat or search to one document, section, or page range.
+
+**Learning and study tools (built on the same RAG spine):**
+- **Quizzes** — generate multiple-choice or open-ended questions from any document.
+- **Flashcards** — auto-generated term/definition pairs.
+- **Notes and highlights** — save excerpts and annotations per document.
+- **Activity feed** — track what you studied and when.
+
+**Developer-friendly design:**
+- **OpenAPI docs** at `/docs` — try every endpoint in the browser.
+- **OpenAI-compatible** embedding and chat APIs — swap any compatible provider (Ollama, Mistral, Together AI, etc.).
+- **Mock providers** — run the full stack offline without API keys (semantic quality not guaranteed).
+- **One database** — Postgres stores metadata, file chunks, vectors, sessions, and learning data.
+- **Pluggable parsers** — add a new file format by registering one class.
+- **Optional React UI** — library, reader, chat, quizzes, notes — all wired to the API.
 
 ---
 
-## Use cases and examples
-
-**Study and exam prep**  
-Upload a textbook chapter (PDF) or lecture outline (DOCX). Ask: “What are the main causes of X according to this chapter?” Generate a **quiz** on the same scope and review **flashcards**.
-
-**Policy and compliance reading**  
-Upload the employee handbook. Ask: “What is the remote work policy?” The answer should cite handbook passages; if retrieval is weak, the response should say so instead of inventing a policy.
-
-**Spreadsheets**  
-Upload an **`.xlsx`** export. Chunks follow sheets/pages from parsing; you can ask questions scoped to that document. (The UI shows **extracted text** for Office files—not a full Excel grid renderer.)
-
-**API-only automation**  
-Integrate from Python, n8n, or another backend: bootstrap a user, upload, poll ingestion, then call `/chat/ask` or `/search`.
-
----
-
-## How OpenRAG works (architecture)
-
-This section follows the same README pattern as projects like [talentmatch-ai](https://github.com/yeluru/talentmatch-ai): **one diagram per idea**, **PNG for pixel-stable rendering on GitHub**, plus a **short caption**. Sources live in [`docs/diagrams/sources/`](docs/diagrams/sources/); regenerate PNGs with [`scripts/render_diagrams.sh`](scripts/render_diagrams.sh) (see [`docs/diagrams/README.md`](docs/diagrams/README.md)).
+## 🏗️ How It Works — Architecture in Pictures
 
 ### System architecture
 
-![OpenRAG system architecture: client tier, FastAPI, domain services, Postgres, external APIs](docs/diagrams/svg/system-architecture.svg)
+![OpenRAG system architecture: client tier, FastAPI application tier, domain layer, external services, data tier](docs/diagrams/svg/system-architecture.svg)
 
-*Three-tier shape: **browsers and integrators** talk to **FastAPI**; **domain services** own parsing, vectors, and LLM calls; **Postgres + files** persist everything. Embeddings and chat completions go out to **HTTP APIs** you configure (`EMBEDDING_*`, `LLM_*`) or **mock** providers for local dev.*
+Five layers, top to bottom:
 
-### API and route surface
+| Layer | What lives here |
+|-------|-----------------|
+| **Client Tier** | React UI (optional) · your app · curl · n8n workflows |
+| **Application Tier** | FastAPI `/api/v1` routes · background ingestion worker · file parsers |
+| **Domain Layer** | pgvector retrieval · grounded prompt builder |
+| **External Services** | OpenAI-compatible embedding API · chat completion API |
+| **Data Tier** | PostgreSQL + pgvector · uploaded files on disk |
 
-![API route groups under /api/v1 and separate /healthz liveness](docs/diagrams/svg/api-routes.svg)
+### API surface
 
-*`/healthz` is separate for load balancers; everything else lives under the versioned prefix. OpenAPI lives at `/docs`.*
+![API route groups under /api/v1 with separate /healthz liveness probe](docs/diagrams/svg/api-routes.svg)
 
-### Ingestion pipeline (internal flow)
+`/healthz` is intentionally separate and unauthenticated — load balancers and health checks call it without needing credentials. Everything useful lives under `/api/v1`.
 
-When you upload a file:
+### Ingestion pipeline
 
-1. The API stores the **file** and creates **`Document`** + **`IngestionJob`** rows.  
-2. A **background task** runs the ingestion pipeline (`app/workers/ingestion_worker.py` → `app/services/ingestion/pipeline.py`).  
-3. The right **parser** runs (registry picks by MIME type / extension).  
-4. **Structure inference** (`structure_extractor.py`) helps respect headings and sections when possible.  
-5. **Chunking** (`app/rag/chunkers/structure_aware.py`) splits text into pieces suitable for embedding and retrieval.  
-6. Each chunk is **embedded** and stored with a **vector** on the `chunks` table (pgvector).  
-7. The job moves to **ready** (or records an error you can read from the API).
+![Ingestion pipeline: POST /documents → parse → chunk → embed → store → job ready](docs/diagrams/svg/ingestion-pipeline.svg)
 
-![Ingestion pipeline from POST /documents to job ready](docs/diagrams/svg/ingestion-pipeline.svg)
+When you upload a file, the API returns immediately with a `document_id` and `job_id`. The pipeline runs in the background:
 
-*Linear pipeline you can trace in code; swapping **BackgroundTasks** for a queue worker would keep the same steps.*
+1. File is saved to disk; a `Document` and `IngestionJob` row are created in Postgres.
+2. The right **parser** runs (MIME type → registry lookup).
+3. **Structure inference** detects headings, sections, and page boundaries.
+4. **Chunker** splits text into retrieval-ready pieces.
+5. Each chunk is **embedded** and its vector stored in pgvector.
+6. The job status moves to `ready` (or records an `error_message`).
 
-### Ingestion sequence (who calls whom)
+### Ingestion sequence
 
-![Sequence: upload, background ingestion, poll status](docs/diagrams/svg/ingestion-sequence.svg)
+![Sequence diagram: client uploads, API stores and schedules, worker embeds and marks ready, client polls status](docs/diagrams/svg/ingestion-sequence.svg)
 
-*The client gets IDs immediately; heavy work finishes **asynchronously** in the API process.*
+The client polls `GET /documents/{id}/ingestion` to know when to start asking questions.
 
-### RAG query path (grounded answer)
+### RAG query path
 
-1. The API **embeds the question** (same embedding model as chunks).  
-2. **pgvector** similarity search pulls the top‑K chunks, with **filters** (e.g. one document).  
-3. **Deduping** and **score thresholds** reduce noise (`RETRIEVAL_*` settings).  
-4. The **LLM** receives a prompt with those passages and is asked to answer **from that context**.  
-5. The response includes **citations** (chunk references) so clients can show “where this came from.”
+![RAG query path: POST /chat/ask → embed question → pgvector search → dedupe → build prompt → LLM → answer + citations](docs/diagrams/svg/rag-query-path.svg)
 
-![RAG query path from /chat/ask to answer with citations](docs/diagrams/svg/rag-query-path.svg)
+Eight steps from question to grounded answer:
 
-*Retrieval is explicit: if scores are weak, the product can say so instead of inventing text.*
+| Step | What happens |
+|------|-------------|
+| 1 | `POST /chat/ask` arrives with question and optional scope |
+| 2 | Question is embedded using the same model as the chunks |
+| 3 | pgvector cosine similarity search finds top-K chunks |
+| 4 | PostgreSQL returns matching chunk text and metadata |
+| 5 | Deduplicate + apply minimum score filter |
+| 6 | Build a grounded prompt: "Answer using only these passages:" |
+| 7 | LLM generates the answer |
+| 8 | Response returns answer + source citations |
 
-### Core data model (simplified ERD)
+### Core data model
 
-![Simplified ERD: users, documents, sections, chunks, jobs, chat sessions](docs/diagrams/svg/core-erd.svg)
+![Simplified ERD: users, documents, sections, chunks, ingestion jobs, chat sessions](docs/diagrams/svg/core-erd.svg)
 
-*Real schema adds `chat_messages`, quizzes, flashcards, notes, highlights, and more; this is the **RAG spine**—users, documents, structure, vectors, and jobs.*
+The RAG spine is: **users → documents → sections → chunks ↔ vectors**. Everything else (sessions, quizzes, flashcards, notes, highlights) hangs off documents.
 
-### Developer journey (first successful ask)
+### Developer journey
 
-![Developer journey from clone to first grounded chat ask](docs/diagrams/svg/developer-journey.svg)
+![Developer journey from git clone to first grounded answer](docs/diagrams/svg/developer-journey.svg)
 
-*Same path you can script with **curl** or any HTTP client; see [Using the API](#using-the-api-step-by-step-with-curl) below.*
+Clone → configure → migrate → upload → wait for `ready` → ask a question. The journey below follows this path exactly.
 
 ---
 
-## Key ideas (mini glossary)
+## 📖 Key Vocabulary
+
+You will see these terms throughout the code and API responses.
 
 | Term | Plain English |
-|------|----------------|
-| **Chunk** | A small piece of text (often a paragraph or section) used as the unit of search and citation. |
-| **Embedding** | A numeric vector representing “meaning” of text; similar ideas get similar vectors. |
-| **Vector database / pgvector** | Storage and similarity search over embeddings inside Postgres. |
-| **Retriever** | The component that picks which chunks to show the LLM for this question. |
-| **Grounding** | Tying the model’s answer to retrieved text instead of free-form world knowledge. |
-| **Citation** | A pointer from an answer back to a specific chunk (and thus back to a document and location). |
-| **Ingestion** | The offline process that parses files, chunks them, and builds the index. |
-| **Scope** | Restricting retrieval to a document, section, or page range so answers stay on-topic. |
-| **Mock provider** | Fake embeddings/LLM for local dev without API keys (not semantically meaningful). |
+|------|---------------|
+| **Chunk** | A small passage of text (typically one paragraph or section). The basic unit of search and citation. |
+| **Embedding** | A list of numbers (a vector) that captures the *meaning* of a chunk or question. Similar meanings → similar vectors. |
+| **pgvector** | A Postgres extension that stores and searches vectors efficiently using cosine similarity. |
+| **Retriever** | The component that runs the similarity search and decides which chunks to hand to the LLM. |
+| **Grounding** | Constraining the LLM's answer to retrieved text rather than its training knowledge. |
+| **Citation** | A pointer from an answer sentence back to a specific chunk, document, and location. |
+| **Ingestion** | The offline pipeline that parses a file, chunks it, embeds each chunk, and stores everything in Postgres. |
+| **Scope** | Limiting retrieval to a specific document, section, or page range so the answer stays on-topic. |
+| **Mock provider** | A fake embedding/LLM for local development. Fast and free, but not semantically meaningful. |
+| **top-K** | The number of most-similar chunks retrieved per query. Controlled by `RETRIEVAL_DEFAULT_TOP_K`. |
 
 ---
 
-## Tech stack
+## 🛠️ Tech Stack
 
-| Layer | Technology |
-|--------|------------|
-| API | FastAPI, Pydantic v2, Uvicorn |
-| Database | PostgreSQL, **pgvector**, SQLAlchemy 2 (async), Alembic |
-| Parsing | PyMuPDF (PDF + optional Tesseract OCR); **python-docx**; **openpyxl** |
-| Embeddings / LLM | httpx → OpenAI-compatible JSON APIs |
-| Frontend | React 18, Vite 5, Tailwind, TypeScript |
+| Layer | Technology | Why |
+|-------|------------|-----|
+| **API** | FastAPI · Pydantic v2 · Uvicorn | Async, typed, self-documenting |
+| **Database** | PostgreSQL · pgvector · SQLAlchemy 2 (async) · Alembic | One DB for data + vectors + migrations |
+| **PDF parsing** | PyMuPDF (fitz) · Tesseract OCR (optional) | Fast, handles scanned pages with OCR |
+| **Word / Excel** | python-docx · openpyxl | Native parsing of Office formats |
+| **Embeddings / LLM** | httpx → any OpenAI-compatible API | Swap providers without code changes |
+| **Frontend** | React 18 · Vite 5 · Tailwind · TypeScript | Modern, fast, optional |
 
 ---
 
-## Repository layout
+## 📁 Repository Layout
 
 ```
-app/
-  api/routes/       # HTTP routers (documents, chat, search, quizzes, …)
-  core/             # Settings, logging, security helpers
-  db/models/        # SQLAlchemy models
-  services/         # Ingestion, parsing, embeddings, retrieval, generation, documents
-  rag/              # Chunkers, prompts, citation helpers
-  workers/          # Background ingestion entrypoint
-alembic/            # Migrations
-frontend/           # Vite + React UI (optional)
-scripts/            # render_start.sh, self_test_features.py, reset helpers
+openrag/
+├── app/
+│   ├── api/routes/          # HTTP route handlers
+│   │   ├── chat.py          #   /chat/ask, /chat/sessions
+│   │   ├── documents.py     #   upload, list, delete, ingestion status
+│   │   ├── search.py        #   semantic search
+│   │   ├── quizzes.py       #   quiz generation and attempts
+│   │   ├── flashcards.py    #   flashcard sets
+│   │   ├── notes.py         #   note CRUD
+│   │   ├── highlights.py    #   highlight CRUD
+│   │   ├── users.py         #   bootstrap user
+│   │   └── health.py        #   /healthz + /api/v1/health
+│   ├── core/
+│   │   ├── config.py        #   ← all config lives here (pydantic-settings)
+│   │   ├── logging.py
+│   │   └── security.py      #   X-Api-Key middleware
+│   ├── db/
+│   │   ├── models/          #   SQLAlchemy ORM models
+│   │   └── session.py       #   async engine + session factory
+│   ├── services/
+│   │   ├── parsing/         #   parser registry + PDF/DOCX/XLSX parsers
+│   │   ├── ingestion/       #   pipeline.py — the ingestion orchestrator
+│   │   ├── embeddings/      #   openai.py + mock.py providers
+│   │   ├── retrieval/       #   pgvector_retriever.py — cosine search + filters
+│   │   ├── generation/      #   LLM call + response parsing
+│   │   └── documents.py     #   document service (CRUD + ingestion status)
+│   ├── rag/
+│   │   ├── chunkers/        #   structure_aware.py — paragraph-level chunking
+│   │   ├── prompts/         #   system + grounded answer prompt templates
+│   │   └── citations.py     #   chunk-to-citation mapping
+│   ├── workers/
+│   │   └── ingestion_worker.py  # background task entry point
+│   └── main.py              #   FastAPI app factory
+├── alembic/                 # migrations (run `alembic upgrade head`)
+├── frontend/                # React + Vite UI (optional)
+├── scripts/
+│   ├── render_start.sh      #   migrate + start (used by Render)
+│   └── self_test_features.py  # HTTP smoke test
+├── tests/
+│   ├── test_rag_integration.py  # end-to-end RAG tests
+│   └── conftest.py
+├── docs/diagrams/svg/       # architecture diagrams (this README uses these)
+├── docker-compose.yml       # Postgres with pgvector on port 5433
+├── .env.example             # all config variables with comments
+├── DEPLOY_RENDER.md         # cloud deployment guide
+└── requirements.txt
 ```
 
-Files you will touch most often:
+**Files you will touch most often:**
 
-- **Config:** [`app/core/config.py`](app/core/config.py), [`.env.example`](.env.example)  
-- **New file types:** [`app/services/parsing/registry.py`](app/services/parsing/registry.py), [`app/services/parsing/base.py`](app/services/parsing/base.py)  
-- **Retrieval tuning:** [`app/services/retrieval/pgvector_retriever.py`](app/services/retrieval/pgvector_retriever.py) + `RETRIEVAL_*` env vars  
-- **Prompts:** [`app/rag/prompts/`](app/rag/prompts/)  
+| Task | File |
+|------|------|
+| Change any config | [`app/core/config.py`](app/core/config.py) + [`.env`](.env.example) |
+| Add a new file format | [`app/services/parsing/registry.py`](app/services/parsing/registry.py) |
+| Tune retrieval | [`app/services/retrieval/pgvector_retriever.py`](app/services/retrieval/pgvector_retriever.py) |
+| Edit LLM prompt | [`app/rag/prompts/`](app/rag/prompts/) |
+| Add an API route | [`app/api/routes/`](app/api/routes/) + register in `app/main.py` |
 
 ---
 
-## Quick start: clone to running app
+## 🚀 Quick Start: Zero to Running in 5 Minutes
 
-### Requirements
+### Prerequisites
 
-- **Python 3.11+** (see [`runtime.txt`](runtime.txt) for Render’s pinned example: 3.12.8)  
-- **Node 18+** if you use the frontend  
-- **Docker** (recommended) or your own Postgres **13+** with `CREATE EXTENSION vector`
+- **Python 3.11+** — check with `python3 --version`
+- **Docker** — for Postgres with pgvector (or bring your own Postgres 13+ with the `vector` extension)
+- **Node 18+** — only if you want the React UI
 
-### 1. Clone and create a virtual environment
+### Step 1 — Clone and install
 
 ```bash
-git clone <your-repo-url> openrag
+git clone https://github.com/yeluru/openrag.git
 cd openrag
 python3 -m venv .venv
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 2. Start Postgres (Docker Compose)
+### Step 2 — Start Postgres
 
 ```bash
 docker compose up -d
 ```
 
-This repo maps Postgres to host port **5433** so it does **not** fight with a local Postgres on **5432**. If tools connect to `localhost:5432` by mistake, you will see errors about the wrong database user—always align `.env` with the port you intend.
+This starts **PostgreSQL 16 with pgvector** on host port **5433** (not 5432, to avoid collisions with any local Postgres installation).
 
-### 3. Configure environment
+Verify it's up:
+
+```bash
+docker compose ps   # should show db running
+```
+
+### Step 3 — Configure your environment
 
 ```bash
 cp .env.example .env
 ```
 
-For a **first run without cloud API keys**, you can keep:
+Open `.env`. For a **first run without any API keys**, the defaults work out of the box:
 
-- `EMBEDDING_PROVIDER=mock`  
-- `LLM_PROVIDER=mock`  
+```env
+EMBEDDING_PROVIDER=mock     # random vectors — no key needed
+LLM_PROVIDER=mock           # stub answers — no key needed
+POSTGRES_PORT=5433          # matches docker-compose.yml
+```
 
-You will get **non-semantic** retrieval scores and stub answers—fine for wiring up the stack, **not** for judging answer quality. For real RAG, set providers to `openai` (or compatible) and add keys.
+> **Want real RAG quality?** Set `EMBEDDING_PROVIDER=openai`, `LLM_PROVIDER=openai`, and add `EMBEDDING_API_KEY` + `LLM_API_KEY`. Any OpenAI-compatible endpoint works (Ollama, Together AI, Mistral, Azure OpenAI, etc.).
 
-Ensure **`POSTGRES_PORT=5433`** matches Compose (already the default in `.env.example`).
-
-### 4. Run migrations and the API
+### Step 4 — Run migrations and start the API
 
 ```bash
 alembic upgrade head
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Useful URLs**
+You should see:
 
-| URL | Purpose |
-|-----|---------|
-| http://localhost:8000/docs | Interactive OpenAPI (Swagger) |
+```
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+**Key URLs:**
+
+| URL | What you'll find |
+|-----|-----------------|
+| http://localhost:8000/docs | Interactive API docs (Swagger UI) — try every endpoint here |
 | http://localhost:8000/redoc | Alternative API docs |
-| `GET /healthz` | **Liveness only** — no DB; use for load balancers |
-| `GET /api/v1/health` | App + **database** check |
-| `GET /api/v1/documents/supported-formats` | MIME types and extensions accepted for upload |
+| http://localhost:8000/healthz | Liveness probe (no DB, no auth) |
+| http://localhost:8000/api/v1/health | App + database health check |
+| http://localhost:8000/api/v1/documents/supported-formats | File types accepted for upload |
 
-### 5. (Optional) Run the React UI
+### Step 5 (optional) — Run the React UI
 
 ```bash
 cd frontend
-cp .env.example .env   # optional tweaks
+cp .env.example .env
 npm install
 npm run dev
 ```
 
-Vite serves the UI (default **http://localhost:5173**) and **proxies** `/api` to **http://127.0.0.1:8000** unless you set `VITE_PROXY_TARGET`. The UI talks to `/api/v1` via `VITE_API_PREFIX`.
+Open **http://localhost:5173** — the UI proxies all API calls to `http://127.0.0.1:8000` automatically.
 
 ---
 
-## Configuration (what each knob does)
+## ✅ Verify Your Setup
 
-All backend variables are documented in [`.env.example`](.env.example). Highlights:
-
-| Area | Variables | Notes |
-|------|-----------|--------|
-| **Database** | `DATABASE_URL` **or** `POSTGRES_*` | If `DATABASE_URL` is set (e.g. Render), `POSTGRES_*` is ignored. URLs may start with `postgres://` or `postgresql://`. |
-| **API** | `API_PREFIX`, `DEBUG`, `LOG_JSON` | `API_PREFIX` defaults to `/api/v1`. |
-| **Security** | `SERVICE_API_KEY` | When set, clients send `X-Api-Key` on protected routes. **`/healthz` stays open.** |
-| **Browser clients** | `CORS_ORIGINS` | Comma-separated origins, e.g. `http://localhost:5173,https://myapp.com`. Empty disables CORS middleware. |
-| **Uploads** | `UPLOAD_DIR`, `MAX_UPLOAD_MB` | Paths are resolved relative to the **repo root**. On cloud PaaS, disk is often **ephemeral** unless you attach persistent storage. |
-| **OCR** | `PDF_OCR_*` | Needs **Tesseract** installed locally; often **off** on simple cloud runtimes (see [`DEPLOY_RENDER.md`](DEPLOY_RENDER.md)). |
-| **Embeddings** | `EMBEDDING_PROVIDER`, `EMBEDDING_API_*`, `EMBEDDING_MODEL`, … | Use `mock` only for plumbing tests. Real RAG needs real embeddings. |
-| **LLM** | `LLM_PROVIDER`, `LLM_API_*`, `LLM_MODEL`, … | Same story: `mock` for smoke tests, real provider for quality. |
-| **Retrieval** | `RETRIEVAL_DEFAULT_TOP_K`, `RETRIEVAL_MIN_SCORE_COSINE`, `RETRIEVAL_DEDUPE_OVERLAP_RATIO` | Tune precision vs recall. With `mock` embeddings, scores are not meaningful—lower thresholds only for local experiments. |
-| **Debug** | `INCLUDE_RETRIEVAL_DEBUG` | Extra retrieval detail in responses when enabled. |
-
----
-
-## Using the API (step-by-step with curl)
-
-Replace hosts/ports if yours differ. The API expects a stable **`X-User-Id`** UUID per logical user.
-
-### 1. Create a user id and bootstrap
+Before uploading a real document, confirm all the pieces are working:
 
 ```bash
+# 1. Basic health — should return { "status": "ok" }
+curl -s http://localhost:8000/healthz | python3 -m json.tool
+
+# 2. Database health — should return { "status": "ok", "database": "ok" }
+curl -s http://localhost:8000/api/v1/health | python3 -m json.tool
+
+# 3. Supported upload formats
+curl -s http://localhost:8000/api/v1/documents/supported-formats | python3 -m json.tool
+
+# 4. Bootstrap a test user (creates the user row in DB)
 export USER_ID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
-curl -s -X POST "http://127.0.0.1:8000/api/v1/users/bootstrap" \
-  -H "X-User-Id: $USER_ID" \
-  -H "Content-Type: application/json"
-```
-
-If you set `SERVICE_API_KEY` in `.env`, add:
-
-`-H "X-Api-Key: your-key"`
-
-### 2. Upload a document
-
-Use **`@`** so curl sends the file bytes (not a string path):
-
-```bash
-curl -s -X POST "http://127.0.0.1:8000/api/v1/documents" \
-  -H "X-User-Id: $USER_ID" \
-  -F "file=@/path/to/your/document.pdf"
-```
-
-Save `document_id` from the JSON response.
-
-### 3. Wait until ingestion is ready
-
-```bash
-export DOC_ID="<paste-document-id-here>"
-curl -s "http://127.0.0.1:8000/api/v1/documents/$DOC_ID/ingestion" \
+curl -s -X POST "http://localhost:8000/api/v1/users/bootstrap" \
   -H "X-User-Id: $USER_ID" | python3 -m json.tool
 ```
 
-Wait until `"status": "ready"` (or inspect `error_message` if it failed).
+If step 2 fails with a database error, check that Docker Compose is running and `POSTGRES_PORT` in `.env` matches (`5433` by default).
 
-### 4. Ask a grounded question
+Run the built-in HTTP smoke test to exercise more features:
 
 ```bash
-curl -s -X POST "http://127.0.0.1:8000/api/v1/chat/ask" \
+OPENRAG_BASE_URL=http://localhost:8000 \
+OPENRAG_USER_ID=$USER_ID \
+python3 scripts/self_test_features.py
+```
+
+---
+
+## 🔌 API Walkthrough
+
+A complete flow from creating a user to getting a grounded answer.
+
+> All examples use `X-User-Id` for user identity. If you set `SERVICE_API_KEY` in `.env`, add `-H "X-Api-Key: your-key"` to every request.
+
+### Step 1 — Create a user
+
+```bash
+export USER_ID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+
+curl -s -X POST "http://localhost:8000/api/v1/users/bootstrap" \
+  -H "X-User-Id: $USER_ID" \
+  -H "Content-Type: application/json" | python3 -m json.tool
+```
+
+**Response:**
+```json
+{
+  "id": "a1b2c3d4-...",
+  "external_id": "a1b2c3d4-...",
+  "created_at": "2025-03-20T10:00:00Z"
+}
+```
+
+### Step 2 — Upload a document
+
+```bash
+curl -s -X POST "http://localhost:8000/api/v1/documents" \
+  -H "X-User-Id: $USER_ID" \
+  -F "file=@/path/to/your/document.pdf" | python3 -m json.tool
+```
+
+**Response:**
+```json
+{
+  "id": "doc-uuid-here",
+  "filename": "document.pdf",
+  "status": "pending",
+  "ingestion_job_id": "job-uuid-here",
+  "created_at": "2025-03-20T10:00:05Z"
+}
+```
+
+Save the document ID:
+
+```bash
+export DOC_ID="doc-uuid-here"
+```
+
+### Step 3 — Poll until ingestion is ready
+
+```bash
+curl -s "http://localhost:8000/api/v1/documents/$DOC_ID/ingestion" \
+  -H "X-User-Id: $USER_ID" | python3 -m json.tool
+```
+
+Keep polling until `status` is `ready` (typically a few seconds for small documents):
+
+```json
+{
+  "job_id": "job-uuid-here",
+  "document_id": "doc-uuid-here",
+  "status": "ready",
+  "progress": 100,
+  "chunks_created": 42,
+  "error_message": null,
+  "completed_at": "2025-03-20T10:00:08Z"
+}
+```
+
+> If `status` is `error`, read `error_message` to see what went wrong (parse failure, embedding API error, etc.).
+
+### Step 4 — Ask a grounded question
+
+```bash
+curl -s -X POST "http://localhost:8000/api/v1/chat/ask" \
   -H "X-User-Id: $USER_ID" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "What is this document mainly about?",
+    "question": "What are the main conclusions of this document?",
     "mode": "concise_summary",
     "scope": { "document_id": "'"$DOC_ID"'" }
   }' | python3 -m json.tool
 ```
 
-The response includes **citations** pointing at chunks; read them like footnotes.
+**Response (with real embeddings + LLM):**
+```json
+{
+  "session_id": "session-uuid",
+  "answer": "The document concludes that...",
+  "citations": [
+    {
+      "chunk_id": "chunk-uuid-1",
+      "document_id": "doc-uuid-here",
+      "page": 3,
+      "score": 0.87,
+      "text_snippet": "In summary, the key finding is that..."
+    },
+    {
+      "chunk_id": "chunk-uuid-2",
+      "document_id": "doc-uuid-here",
+      "page": 7,
+      "score": 0.81,
+      "text_snippet": "These results suggest..."
+    }
+  ],
+  "source_passages": [
+    { "page": 3, "text": "In summary, the key finding is that..." },
+    { "page": 7, "text": "These results suggest..." }
+  ],
+  "confidence": "high",
+  "retrieval_used": true
+}
+```
 
----
+Read citations like footnotes — each one tells you exactly which page and passage the model used.
 
-## Frontend (optional UI)
-
-The UI is optional: everything important goes through the API.
-
-**Features (high level):** library and upload, **reader** (PDF in an embedded viewer; Word/Excel show **extracted text** by page/sheet because browsers cannot render Office like PDF), chat, quizzes, highlights, notes, settings, theme switching, and a simple **landing** flow.
-
-**Env:** [`frontend/.env.example`](frontend/.env.example) — `VITE_API_PREFIX`, optional `VITE_API_KEY`, optional `VITE_PROXY_TARGET`.
-
----
-
-## Deployment
-
-For **[Render.com](https://render.com)** (Postgres + web service, migrations on start, health checks), follow **[DEPLOY_RENDER.md](DEPLOY_RENDER.md)** and optional [`render.yaml`](render.yaml) Blueprint.
-
----
-
-## Testing and quality
+### Step 5 — Semantic search (find passages without chat)
 
 ```bash
-# Fast: no live Postgres / OpenAI required
+curl -s "http://localhost:8000/api/v1/search?q=methodology+and+approach&document_id=$DOC_ID" \
+  -H "X-User-Id: $USER_ID" | python3 -m json.tool
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "chunk_id": "chunk-uuid-3",
+      "document_id": "doc-uuid-here",
+      "score": 0.79,
+      "page": 5,
+      "text": "The research methodology employed a mixed-methods approach..."
+    }
+  ],
+  "total": 3,
+  "query": "methodology and approach"
+}
+```
+
+### Step 6 — Generate a quiz
+
+```bash
+curl -s -X POST "http://localhost:8000/api/v1/quizzes" \
+  -H "X-User-Id: $USER_ID" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "document_id": "'"$DOC_ID"'",
+    "num_questions": 5,
+    "question_type": "multiple_choice"
+  }' | python3 -m json.tool
+```
+
+### Step 7 — List your documents
+
+```bash
+curl -s "http://localhost:8000/api/v1/documents" \
+  -H "X-User-Id: $USER_ID" | python3 -m json.tool
+```
+
+### Step 8 — Continue a chat session
+
+Every `/chat/ask` response includes a `session_id`. Pass it back to maintain conversation history:
+
+```bash
+curl -s -X POST "http://localhost:8000/api/v1/chat/ask" \
+  -H "X-User-Id: $USER_ID" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Can you expand on the second point?",
+    "session_id": "session-uuid-from-step-4",
+    "scope": { "document_id": "'"$DOC_ID"'" }
+  }' | python3 -m json.tool
+```
+
+---
+
+## ⚙️ Configuration Reference
+
+All settings are read from `.env` (or environment variables). See [`.env.example`](.env.example) for the full annotated list.
+
+| Area | Variable(s) | Default | Notes |
+|------|-------------|---------|-------|
+| **Database** | `DATABASE_URL` | — | When set, overrides all `POSTGRES_*` below |
+| | `POSTGRES_HOST` | `localhost` | |
+| | `POSTGRES_PORT` | `5433` | Docker Compose maps 5433 → 5432 inside container |
+| | `POSTGRES_USER` | `openrag` | |
+| | `POSTGRES_PASSWORD` | `openrag` | |
+| | `POSTGRES_DB` | `openrag` | |
+| **Security** | `SERVICE_API_KEY` | _(empty)_ | When set, all routes (except `/healthz`) require `X-Api-Key` header |
+| **CORS** | `CORS_ORIGINS` | _(empty)_ | Comma-separated allowed origins, e.g. `http://localhost:5173` |
+| **Uploads** | `UPLOAD_DIR` | `./data/uploads` | Relative to repo root |
+| | `MAX_UPLOAD_MB` | `100` | Max file size |
+| **OCR** | `PDF_OCR_ENABLED` | `true` | Requires Tesseract on PATH |
+| | `PDF_OCR_LANGUAGE` | `eng` | Tesseract language code |
+| **Embeddings** | `EMBEDDING_PROVIDER` | `openai` | `openai` or `mock` |
+| | `EMBEDDING_API_BASE` | `https://api.openai.com/v1` | Override for any compatible endpoint |
+| | `EMBEDDING_API_KEY` | _(empty)_ | Your API key |
+| | `EMBEDDING_MODEL` | `text-embedding-3-small` | |
+| | `EMBEDDING_DIMENSIONS` | `1536` | Must match the model's output size |
+| **LLM** | `LLM_PROVIDER` | `openai` | `openai` or `mock` |
+| | `LLM_API_BASE` | `https://api.openai.com/v1` | Override for Ollama, Together AI, etc. |
+| | `LLM_API_KEY` | _(empty)_ | Your API key |
+| | `LLM_MODEL` | `gpt-4o-mini` | |
+| | `LLM_MAX_TOKENS` | `4096` | Max tokens in LLM response |
+| | `LLM_TEMPERATURE` | `0.2` | Lower = more deterministic answers |
+| **Retrieval** | `RETRIEVAL_DEFAULT_TOP_K` | `8` | Chunks fetched per query |
+| | `RETRIEVAL_MIN_SCORE_COSINE` | `0.25` | Minimum similarity score (0–1); raise to increase precision |
+| | `RETRIEVAL_DEDUPE_OVERLAP_RATIO` | `0.85` | Duplicate detection threshold |
+| **Debug** | `DEBUG` | `false` | Enables verbose logging |
+| | `INCLUDE_RETRIEVAL_DEBUG` | `false` | Adds retrieval internals to API responses |
+| | `LOG_JSON` | `false` | Structured JSON logs (for log aggregators) |
+
+### Using a local LLM with Ollama
+
+Run Ollama locally, then point OpenRAG at it:
+
+```env
+EMBEDDING_PROVIDER=openai
+EMBEDDING_API_BASE=http://localhost:11434/v1
+EMBEDDING_API_KEY=ollama
+EMBEDDING_MODEL=nomic-embed-text
+
+LLM_PROVIDER=openai
+LLM_API_BASE=http://localhost:11434/v1
+LLM_API_KEY=ollama
+LLM_MODEL=llama3.2
+```
+
+No data leaves your machine. No API bills.
+
+---
+
+## 🖥️ Frontend (Optional React UI)
+
+The React app is completely optional — all features are available through the API. But it makes the experience more tangible.
+
+**Features:** document library, file upload, PDF reader, Word/Excel text viewer, chat interface, quiz and flashcard flows, highlights, notes, activity feed, settings with theme switching.
+
+**Setup:**
+```bash
+cd frontend
+cp .env.example .env    # edit if needed
+npm install
+npm run dev             # http://localhost:5173
+```
+
+**Frontend `.env` options:**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `VITE_API_PREFIX` | `/api/v1` | API base path |
+| `VITE_API_KEY` | _(empty)_ | `X-Api-Key` value when `SERVICE_API_KEY` is set |
+| `VITE_PROXY_TARGET` | `http://127.0.0.1:8000` | Where Vite proxies `/api` calls |
+
+> **Note on Office files in the UI:** `.docx` and `.xlsx` are displayed as extracted text, not as pixel-perfect Office renderers. The same text powers ingestion and retrieval — the reader just shows what was indexed.
+
+---
+
+## ☁️ Deployment on Render
+
+Full guide in **[DEPLOY_RENDER.md](DEPLOY_RENDER.md)**. The short version:
+
+1. Create a **Render Postgres** database (the Internal Database URL auto-populates `DATABASE_URL`).
+2. Create a **Render Web Service** pointing at this repo.
+3. Set **Build command:** `pip install -r requirements.txt`
+4. Set **Start command:** `bash scripts/render_start.sh` (runs `alembic upgrade head` then starts Uvicorn).
+5. Set **Health check path:** `/healthz`
+6. Add your `EMBEDDING_API_KEY`, `LLM_API_KEY`, `SERVICE_API_KEY`, and `CORS_ORIGINS` environment variables.
+
+**Important Render caveats:**
+- Render's filesystem is **ephemeral** — uploaded files are lost on redeploy unless you add a [Render Disk](https://render.com/docs/disks).
+- Tesseract OCR is **not available** on Render's native Python runtime. Set `PDF_OCR_ENABLED=false` unless you use a custom Docker image.
+
+There is also a [`render.yaml`](render.yaml) Blueprint for one-click deployment.
+
+---
+
+## 🧪 Testing
+
+```bash
+# Fast unit tests — no Postgres or API keys needed
 pytest -q -m "not integration"
 
-# Full suite: needs DB per .env and usually real keys for integration paths
+# Full test suite — needs Postgres running per your .env
 pytest -q
 
-# Integration only, against a running server
-OPENRAG_TEST_BASE_URL=http://127.0.0.1:8000 pytest tests/test_rag_integration.py -m integration -v
+# Integration tests against a live server
+OPENRAG_TEST_BASE_URL=http://localhost:8000 \
+pytest tests/test_rag_integration.py -m integration -v
 ```
 
-See [`tests/conftest.py`](tests/conftest.py) for **`OPENRAG_TEST_*`** variables when `SERVICE_API_KEY` is enabled.
+**What the integration tests cover:**
+- Document upload → ingestion → `ready` status
+- Grounded answer contains citations and source passages
+- Unrelated question returns low-confidence / insufficient-evidence signal
+- Semantic search returns relevant text snippets
+- Quiz generation with explanations
+- Scope narrows retrieval to a specific page range
 
-**HTTP smoke script:** [`scripts/self_test_features.py`](scripts/self_test_features.py) — uses env vars prefixed with **`OPENRAG_`** (see the file docstring).
+If `SERVICE_API_KEY` is set, pass it via `OPENRAG_TEST_API_KEY` — see [`tests/conftest.py`](tests/conftest.py).
 
----
-
-## Design choices and tradeoffs
-
-**Background tasks vs a job queue**  
-Ingestion runs via FastAPI **BackgroundTasks** in the same process. That keeps the repo simple to clone and run; it means **heavy uploads compete with API traffic** and **in-flight jobs are lost** if the process restarts. A natural contribution is plugging the same `run_ingestion` pipeline into **Celery / RQ / ARQ** or a cloud task queue.
-
-**Postgres-only vectors**  
-pgvector avoids running a second database for many deployments. At very large scale you might shard or add a dedicated vector engine; the retrieval interface is the place to evolve that.
-
-**Header-based user identity**  
-`X-User-Id` is intentional for API-first integration. It is **not** full user authentication. For production on the public internet, place the API behind **OAuth2**, **API gateways**, or mutual TLS, and map identities server-side.
-
-**Office “preview” in the UI**  
-`.docx` / `.xlsx` are rendered as **indexed text**, not pixel-perfect Office. Ingestion and RAG still use the same extracted text the reader shows.
-
----
-
-## Troubleshooting
-
-| Symptom | Likely cause | What to try |
-|---------|----------------|-------------|
-| `role "openrag" does not exist` | App hitting **wrong Postgres** (e.g. port **5432** Homebrew vs **5433** Docker) | Match `POSTGRES_PORT` / `DATABASE_URL` to the instance you started |
-| Alembic or app sees wrong config | Running commands outside repo root | Run from repo root; settings load **repo `.env`** by path |
-| Low similarity scores, nonsense retrieval | `EMBEDDING_PROVIDER=mock` | Switch to real embeddings for meaningful search |
-| Answers say `[mock]` or feel empty | `LLM_PROVIDER=mock` | Set a real LLM provider and key |
-| OCR does nothing | Tesseract not installed or disabled | Install Tesseract; set `PDF_OCR_ENABLED=true` |
-| `Unsupported file type` | Format not registered | Check `GET /documents/supported-formats`; add a parser (see Contributing) |
-
-**Reset local data (truncate, keep schema):**
-
+**HTTP smoke test** (hits a running server, no pytest):
 ```bash
-docker compose exec -T db psql -U openrag -d openrag \
-  -c "TRUNCATE TABLE users RESTART IDENTITY CASCADE;"
+OPENRAG_BASE_URL=http://localhost:8000 \
+OPENRAG_USER_ID=your-user-uuid \
+python3 scripts/self_test_features.py
 ```
 
-Or use [`scripts/reset_data.sql`](scripts/reset_data.sql). **Nuclear option:** `docker compose down -v`, bring DB back, then `alembic upgrade head`.
+---
 
-**Migrating from older clones** that used a different DB role name: either align `.env` with your existing database or wipe volumes and recreate so credentials match [`docker-compose.yml`](docker-compose.yml).
+## 🔬 Design Decisions and Trade-offs
+
+**BackgroundTasks instead of a job queue**
+Ingestion runs via FastAPI `BackgroundTasks` in the same process. This keeps the project simple — one `docker compose up -d` and you're running. The downside: heavy uploads compete with API traffic, and in-flight jobs are lost on restart. The natural upgrade path is plugging `run_ingestion()` into Celery, RQ, or ARQ without touching the pipeline logic.
+
+**Postgres for everything (no separate vector DB)**
+pgvector avoids running a second database. At the scale of a startup or research project, Postgres with pgvector handles millions of vectors comfortably. At very large scale, you might layer in a dedicated vector engine — the `pgvector_retriever.py` interface is the right place to evolve that.
+
+**Header-based user identity (`X-User-Id`)**
+`X-User-Id` is an API-first design choice. It is **not** full authentication. For public internet deployments, place the API behind OAuth2, an API gateway, or mutual TLS, and map real identities to user IDs server-side. The header makes it trivial to test and integrate without standing up an auth server.
+
+**Structure-aware chunking**
+Rather than splitting every 512 tokens blindly, the chunker tries to respect headings and sections. This keeps related text together and improves retrieval precision — a paragraph is more useful than an arbitrary text slice that cuts mid-sentence.
+
+**OpenAI-compatible APIs**
+The embedding and LLM clients speak the OpenAI API spec — which is now the de facto standard for local models too (Ollama, LM Studio, vLLM). You can run fully local with Ollama and a local embedding model with no code changes.
 
 ---
 
-## Contributing
+## 🔧 Troubleshooting
 
-We want this to be a friendly **open-source** project. You do not need to be an ML researcher to help.
-
-**Start here:** **[CONTRIBUTING.md](CONTRIBUTING.md)** (dev setup, tests, PR expectations).  
-**Community standards:** **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** (Contributor Covenant 2.1).
-
-### Ways to contribute
-
-1. **Documentation** — Fix confusing steps, add examples, translate sections (keep technical terms accurate).  
-2. **Parsers** — Add `.md`, `.csv`, `.pptx`, or scanned-image pipelines; register via `register_parser`.  
-3. **Retrieval** — Better deduping, hybrid search (keyword + vector), metadata filters, reranking.  
-4. **Prompts** — Safer defaults, clearer “insufficient evidence” behavior, structured JSON outputs.  
-5. **Frontend** — Accessibility, reader UX, mobile layout.  
-6. **Ops** — Docker Compose profiles, Helm charts, example Terraform, CI workflows.  
-7. **Tests** — Unit tests for edge cases; integration tests with fixtures.
-
-### Adding a new document format
-
-1. Implement `DocumentParser` in [`app/services/parsing/base.py`](app/services/parsing/base.py) returning a `ParsedDocument`.  
-2. Call `register_parser(...)` from your module with **canonical MIME**, **accepted MIME types**, **extensions**, and a **factory**.  
-3. Import your module from the builtin loader in [`registry.py`](app/services/parsing/registry.py) (or ensure it is imported at startup).  
-4. Add tests under [`tests/`](tests/) (see [`tests/test_parser_registry.py`](tests/test_parser_registry.py)).  
-5. Run `pytest -q -m "not integration"` before opening a PR.
-
-### Pull request checklist
-
-- **Small, focused diffs** — One feature or fix per PR when possible.  
-- **Tests** — For logic changes, add or update tests.  
-- **Docs** — Update README or `.env.example` if behavior or configuration changed.  
-- **Describe the “why”** — Help reviewers understand user-visible impact.
-
-If you are unsure, open an issue with your idea; we can point you to the right files. For maintainer-facing process and security reporting, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| `role "openrag" does not exist` | App is hitting a different Postgres (e.g. port 5432 homebrew install instead of 5433 Docker) | Set `POSTGRES_PORT=5433` in `.env` to match `docker-compose.yml`, or use `DATABASE_URL` directly |
+| `alembic.util.exc.CommandError: Can't locate revision` | Running Alembic from the wrong directory | Run `alembic upgrade head` from the **repo root** |
+| Ingestion stuck at `pending` | API process died before background task completed | Restart the server; resubmit the upload |
+| Similarity scores are all near `0.5` | `EMBEDDING_PROVIDER=mock` uses random vectors | Switch to a real embedding provider for meaningful search |
+| Answers say `[mock]` or feel empty | `LLM_PROVIDER=mock` | Set a real LLM provider and key |
+| OCR does not run on scanned PDFs | Tesseract not on PATH | Install Tesseract: `brew install tesseract` (mac) / `apt install tesseract-ocr` (linux) |
+| `CORS` errors in browser | `CORS_ORIGINS` not set | Add `CORS_ORIGINS=http://localhost:5173` (or your UI origin) to `.env` |
+| Upload fails with `413 Too Large` | File exceeds `MAX_UPLOAD_MB` | Increase `MAX_UPLOAD_MB` in `.env` |
+| `/api/v1/health` returns DB error | Postgres not reachable | Run `docker compose ps` and `docker compose up -d` |
+| `401 Unauthorized` | `SERVICE_API_KEY` is set but you're not sending `X-Api-Key` | Add `-H "X-Api-Key: your-key"` to every request, or unset the key for local dev |
 
 ---
 
-## Community guidelines
+## ❓ FAQ
 
-Participation is governed by the **[Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md)**. Please read it before opening issues, pull requests, or discussions.
+**Q: Do I need an OpenAI account?**
+No. Set `EMBEDDING_PROVIDER=mock` and `LLM_PROVIDER=mock` to run without any API keys. Results won't be semantically meaningful, but the full pipeline works — great for development. For real quality, use any OpenAI-compatible API: OpenAI, Ollama (local), Together AI, Mistral, Azure OpenAI, etc.
+
+**Q: Can I run this completely locally with no internet access?**
+Yes. Run Ollama locally, point `EMBEDDING_API_BASE` and `LLM_API_BASE` at `http://localhost:11434/v1`, and set appropriate model names. No data leaves your machine.
+
+**Q: Why does the UI show "extracted text" for Word and Excel files instead of the real formatting?**
+Browsers can render PDFs natively, but they cannot render `.docx` or `.xlsx` without a heavy Office renderer library. OpenRAG shows the indexed text — which is exactly what the RAG system uses — so what you see is what the model sees.
+
+**Q: How do I add support for a new file format (e.g. `.pptx`, `.txt`, `.html`)?**
+Register a parser in [`app/services/parsing/registry.py`](app/services/parsing/registry.py). It needs to implement the base class in `base.py` and return a list of `ParsedPage` objects. The rest of the pipeline (chunking, embedding, storage) is unchanged.
+
+**Q: What happens if ingestion fails?**
+The `IngestionJob` row records `status=error` and an `error_message`. Poll `GET /documents/{id}/ingestion` — if the status is `error`, read the message to diagnose. Common causes: API key missing, PDF is encrypted, file is corrupt.
+
+**Q: Can I use OpenRAG for multi-user production?**
+The architecture supports multiple users via `X-User-Id`. For production, add authentication in front (OAuth2, JWT, or an API gateway) and map real user identities to `X-User-Id` values. Disk uploads are currently on the local filesystem — use Render Disk or S3-compatible storage for durability.
+
+**Q: What is `retrieval_min_score_cosine` and how do I tune it?**
+It is the minimum cosine similarity a chunk must score to be included in the prompt. The default is `0.25` (25% similar). Raise it (e.g. to `0.4`) for more precise answers that may sometimes say "not enough evidence". Lower it for broader retrieval that risks more noise. With mock embeddings, scores are random — only tune this with real embeddings.
+
+**Q: How is ingestion triggered? Is there a queue?**
+Ingestion runs as a FastAPI `BackgroundTask` — in the same process, after the upload response is sent. There is no external queue. This keeps setup simple. For production workloads, you can replace the background task trigger with Celery or ARQ while keeping the same pipeline logic.
+
+**Q: Can I scope a question to specific pages of a document?**
+Yes. Pass a `scope` object in your `/chat/ask` request:
+
+```json
+{
+  "question": "What does section 3 say?",
+  "scope": {
+    "document_id": "doc-uuid",
+    "page_start": 10,
+    "page_end": 20
+  }
+}
+```
+
+Only chunks from those pages will be retrieved.
 
 ---
 
-## License
+## 🤝 Contributing
 
-OpenRAG is licensed under the **[MIT License](LICENSE)**.
+Contributions are welcome — from a typo fix to a new parser or a job queue integration.
 
-Copyright (c) 2025 OpenRAG contributors. Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project shall be under the same license.
+**Good first contributions:**
+- Add a parser for `.txt`, `.pptx`, or `.html`
+- Add a new chunking strategy (e.g. fixed-size, sentence-level)
+- Replace `BackgroundTasks` with Celery or ARQ
+- Add S3-compatible object storage for uploads
+- Write tests for an untested service
+- Improve the React UI (themes, accessibility, mobile)
+
+**How to contribute:**
+
+1. Fork the repository and create a feature branch: `git checkout -b feat/my-feature`
+2. Make your changes with clear, focused commits.
+3. Add or update tests where appropriate.
+4. Run the fast test suite: `pytest -q -m "not integration"`
+5. Open a pull request with a clear description of the change and why.
+
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md) in all interactions.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more detail on code style, commit conventions, and the review process.
 
 ---
 
-**Welcome aboard.** If OpenRAG helps you learn RAG or ship a project, consider starring the repo and sharing what you built.
+## 📄 License
+
+[MIT](LICENSE) — free to use, fork, and build on.
+
+---
+
+<div align="center">
+
+**Built with curiosity. Ship it, learn from it, make it your own.**
+
+⭐ If this helped you understand RAG, a star on the repo goes a long way.
+
+</div>
